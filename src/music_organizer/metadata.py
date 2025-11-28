@@ -259,12 +259,45 @@ def _extract_generic_tags(audio: mutagen.FileType, metadata: TrackMetadata) -> T
 def scan_directory(
     directory: Path, extensions: tuple[str, ...] = (".mp3", ".flac", ".m4a", ".ogg")
 ) -> list[TrackMetadata]:
-    """Scan a directory recursively and extract metadata from all audio files."""
+    """Scan a directory recursively and extract metadata from all audio files.
+
+    Handles broken symlinks, permission errors, and missing files gracefully.
+    """
+    import logging
+    import os
+    logger = logging.getLogger("music_organizer")
     results = []
 
-    for file_path in directory.rglob("*"):
-        if file_path.suffix.lower() in extensions:
-            metadata = extract_metadata(file_path)
-            results.append(metadata)
+    def walk_directory(dir_path: Path):
+        """Walk directory tree, skipping broken symlinks and inaccessible folders."""
+        try:
+            for entry in os.scandir(dir_path):
+                try:
+                    if entry.is_symlink() and not entry.path:
+                        # Broken symlink
+                        logger.debug(f"Skipping broken symlink: {entry.path}")
+                        continue
+
+                    if entry.is_dir(follow_symlinks=False):
+                        # Recurse into subdirectory
+                        yield from walk_directory(Path(entry.path))
+                    elif entry.is_file():
+                        yield Path(entry.path)
+
+                except (OSError, PermissionError) as e:
+                    logger.debug(f"Skipping inaccessible entry {entry.path}: {e}")
+                    continue
+
+        except (OSError, PermissionError, FileNotFoundError) as e:
+            logger.debug(f"Cannot access directory {dir_path}: {e}")
+
+    for file_path in walk_directory(directory):
+        try:
+            if file_path.suffix.lower() in extensions:
+                metadata = extract_metadata(file_path)
+                results.append(metadata)
+        except (OSError, PermissionError) as e:
+            logger.debug(f"Skipping file {file_path}: {e}")
+            continue
 
     return results

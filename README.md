@@ -110,7 +110,27 @@ Automatically merges artist name variations:
 
 - "DJ Shadow" / "Dj Shadow" / "dj shadow" → "DJ Shadow"
 - "The Beatles" / "Beatles" → "The Beatles"
+- "'Weird Al' Yankovic" / "Weird Al Yankovic" → `"Weird Al" Yankovic`
 - Punctuation variants merged (e.g., "Harry Connick Jr" / "Harry Connick, Jr.")
+
+## Scan Caching
+
+Subsequent scans are much faster thanks to intelligent caching:
+
+- Caches metadata for all scanned files
+- Only re-scans files that have changed (different modification time or size)
+- Cache stored in `.music-organizer-cache.json` in your music library
+
+```bash
+# Normal operation (uses cache)
+music-organizer organize /music
+
+# Disable caching
+music-organizer organize /music --no-cache
+
+# Force full rescan
+music-organizer organize /music --clear-cache
+```
 
 ## What Happens to Files
 
@@ -141,6 +161,8 @@ Automatically merges artist name variations:
 --no-compilations   Disable compilation detection
 --no-normalize      Disable artist name normalization
 --no-duplicates     Disable duplicate detection
+--no-cache          Disable scan caching
+--clear-cache       Force full rescan
 --verbose, -v       Show debug output
 --log, -L FILE      Write log to file
 ```

@@ -64,6 +64,10 @@ class Config:
     art_filename: str = "cover"  # Will add appropriate extension
     art_max_size: int = 1000  # Max dimension in pixels
 
+    # Cache settings
+    use_cache: bool = True  # Cache scan results to avoid re-scanning unchanged files
+    cache_dir: Path | None = None  # Where to store cache (default: source_dir)
+
     # Safety settings
     dry_run: bool = True  # Preview changes without moving files
     create_backup: bool = True

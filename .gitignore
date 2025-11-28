@@ -50,3 +50,6 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Music organizer cache (created in music libraries)
+.music-organizer-cache.json

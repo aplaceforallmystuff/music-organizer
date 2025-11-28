@@ -17,6 +17,7 @@ ARTIST_ALIASES = {
     "The Beatles": ["Beatles"],
     "The Rolling Stones": ["Rolling Stones"],
     "The Who": ["Who"],
+    '"Weird Al" Yankovic': ["'Weird Al' Yankovic", "Weird Al Yankovic", "Weird Al", "Al Yankovic"],
 }
 
 # Words in ALBUM ARTIST field that indicate a compilation album
@@ -60,13 +61,17 @@ COMPILATION_ALBUM_PATTERNS = [
 def _normalize_for_comparison(name: str) -> str:
     """Normalize a name for fuzzy comparison.
 
-    Strips whitespace, lowercases, and normalizes common variations.
+    Strips whitespace, lowercases, removes quotes, and normalizes common variations.
     """
     if not name:
         return ""
 
     # Lowercase and strip
     normalized = name.lower().strip()
+
+    # Remove all types of quotes (straight and curly)
+    # This handles 'Weird Al' vs Weird Al, "Artist" vs Artist, etc.
+    normalized = re.sub(r"['\"`'\u2018\u2019\u201c\u201d]", "", normalized)
 
     # Normalize DJ/Dj/dj -> dj (for comparison only)
     normalized = re.sub(r'\bdj\b', 'dj', normalized, flags=re.IGNORECASE)
@@ -84,6 +89,7 @@ def _normalize_artist_for_comparison(artist: str) -> str:
     """Normalize an artist name for fuzzy comparison.
 
     More aggressive than album normalization - also handles:
+    - Quote variations ('Weird Al' vs Weird Al)
     - Punctuation variations (Jr vs Jr.)
     - Common separators (& vs and)
     - Feature/collaboration syntax
@@ -92,6 +98,10 @@ def _normalize_artist_for_comparison(artist: str) -> str:
         return ""
 
     normalized = artist.lower().strip()
+
+    # Remove all types of quotes (straight and curly)
+    # This handles 'Weird Al' vs Weird Al, "Artist" vs Artist, etc.
+    normalized = re.sub(r"['\"`'\u2018\u2019\u201c\u201d]", "", normalized)
 
     # Remove punctuation that varies between versions
     # "Harry Connick, Jr." vs "Harry Connick Jr" -> "harry connick jr"
@@ -249,15 +259,20 @@ class ArtistNormalizer:
                 logger.info(f"Found artist name variants: {variants}")
 
             # Pick canonical form:
-            # 1. Prefer names with proper "DJ" over "Dj"
-            # 2. Then prefer most common
-            # 3. Then prefer longer (more complete) names
+            # 1. Prefer names with proper quotes (double over single, quotes over none)
+            # 2. Prefer names with proper "DJ" over "Dj"
+            # 3. Then prefer most common
+            # 4. Then prefer longer (more complete) names
 
             def score_name(name: str) -> tuple:
                 count = name_counts[name]
                 has_proper_dj = name.startswith("DJ ") or " DJ " in name
+                # Prefer double quotes over single quotes over no quotes
+                has_double_quotes = '"' in name
+                has_single_quotes = "'" in name and not has_double_quotes
+                quote_score = 2 if has_double_quotes else (1 if has_single_quotes else 0)
                 length = len(name)
-                return (has_proper_dj, count, length)
+                return (quote_score, has_proper_dj, count, length)
 
             best_name = max(variants, key=score_name)
             self._learned_names[normalized_key] = best_name

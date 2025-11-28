@@ -156,6 +156,20 @@ DISCOGS INTEGRATION
   - Get a free token at https://www.discogs.com/settings/developers
   - Use: music-organizer organize /path --discogs-token YOUR_TOKEN
   - Or set DISCOGS_TOKEN environment variable
+
+\b
+SCAN CACHING
+------------
+  By default, scan results are cached to speed up subsequent runs.
+  Only files that have changed (different modification time or size)
+  are re-scanned. The cache is stored in .music-organizer-cache.json
+  in the source directory.
+
+  # Disable caching (always scan all files)
+  music-organizer organize /path --no-cache
+
+  # Clear cache before running (force full rescan)
+  music-organizer organize /path --clear-cache
 """
 
 ARTWORK_HELP = """
@@ -384,6 +398,17 @@ def scan(directory: Path, limit: int):
     is_flag=True,
     help="Show retro 80s stereo visualizer during scanning."
 )
+@click.option(
+    "--cache/--no-cache",
+    default=True,
+    show_default=True,
+    help="Cache scan results to skip unchanged files on subsequent runs."
+)
+@click.option(
+    "--clear-cache",
+    is_flag=True,
+    help="Clear the scan cache before running (forces full rescan)."
+)
 def organize(
     directory: Path,
     dest: Path | None,
@@ -399,12 +424,22 @@ def organize(
     verbose: bool,
     log: Path | None,
     visualizer: bool,
+    cache: bool,
+    clear_cache: bool,
 ):
     """Organize music library by metadata."""
     # Setup logging
     setup_logging(verbose=verbose, log_file=log)
     if log:
         console.print(f"[dim]Logging to: {log}[/dim]\n")
+
+    # Handle cache clearing
+    if clear_cache:
+        from .cache import CACHE_FILENAME
+        cache_file = directory / CACHE_FILENAME
+        if cache_file.exists():
+            cache_file.unlink()
+            console.print(f"[yellow]Cleared scan cache[/yellow]\n")
 
     config = Config(
         source_dir=directory,
@@ -419,9 +454,11 @@ def organize(
         discogs_enabled=bool(discogs_token),
         discogs_token=discogs_token,
         dry_run=not execute,
+        use_cache=cache,
     )
 
     discogs_status = 'Yes' if discogs_token else '[dim]No (provide --discogs-token for extra verification)[/dim]'
+    cache_status = '[green]Yes (skips unchanged files)[/green]' if cache else '[dim]No[/dim]'
     console.print(Panel.fit(
         f"[bold]Music Library Organizer[/bold]\n\n"
         f"Source: {config.source_dir}\n"
@@ -432,6 +469,7 @@ def organize(
         f"Duplicate detection: {'Yes' if duplicates else 'No'}\n"
         f"Compilation detection: {'Yes' if compilations else 'No'}\n"
         f"Artist normalization: {'Yes' if normalize else 'No'}\n"
+        f"Scan cache: {cache_status}\n"
         f"Mode: {'[red bold]EXECUTE[/red bold]' if execute else '[green]DRY RUN (preview only)[/green]'}",
         title="Configuration"
     ))

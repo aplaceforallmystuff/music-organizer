@@ -8,6 +8,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .cache import ScanCache
 from .config import Config
 from .metadata import TrackMetadata, extract_metadata
 from .musicbrainz_lookup import enrich_metadata, init_musicbrainz
@@ -140,8 +141,14 @@ class MusicOrganizer:
         self._album_artists_cache: dict[Path, list[str]] = {}  # album_dir -> list of artists
         self._progress_callback = progress_callback
 
+        # Initialize scan cache
+        cache_dir = config.cache_dir or config.source_dir
+        self._scan_cache = ScanCache(cache_dir) if config.use_cache else None
+
         logger.info(f"Initializing MusicOrganizer with source: {config.source_dir}")
         logger.debug(f"Config: detect_compilations={config.detect_compilations}, normalize_artists={config.normalize_artists}")
+        if self._scan_cache:
+            logger.info(f"Scan cache enabled ({len(self._scan_cache)} entries loaded)")
 
         # Initialize external services FIRST so they're available for lookups
         if config.musicbrainz_enabled:
@@ -181,6 +188,10 @@ class MusicOrganizer:
         """Scan the source directory and create an organization plan."""
         plan = OrganizationPlan()
 
+        # Prune cache of missing files
+        if self._scan_cache:
+            self._scan_cache.prune_missing(self.config.source_dir)
+
         # Find all audio files
         audio_files = list(self._find_audio_files())
         total_files = len(audio_files)
@@ -195,6 +206,12 @@ class MusicOrganizer:
                     plan.operations.append(operation)
             except Exception as e:
                 plan.errors.append((file_path, str(e)))
+
+        # Save cache after scan completes
+        if self._scan_cache:
+            self._scan_cache.save()
+            stats = self._scan_cache.get_stats()
+            logger.info(f"Cache stats: {stats['hits']} hits, {stats['misses']} misses, {stats['stale']} stale")
 
         return plan
 
@@ -212,27 +229,71 @@ class MusicOrganizer:
         ):
             return None
 
-        # Extract metadata
-        metadata = extract_metadata(file_path)
+        # Check cache first
+        cached = self._scan_cache.get(file_path) if self._scan_cache else None
 
-        # Try to enrich missing metadata
-        if not metadata.is_complete and self.config.missing_metadata_action == "lookup":
-            if self.config.musicbrainz_enabled:
-                metadata = enrich_metadata(metadata, self.config.acoustid_api_key)
+        if cached:
+            # Rebuild TrackMetadata from cache
+            metadata = TrackMetadata(
+                file_path=file_path,
+                artist=cached.artist,
+                album_artist=cached.album_artist,
+                album=cached.album,
+                title=cached.title,
+                track_number=cached.track_number,
+                year=cached.year,
+            )
+            # Restore hash if we had it
+            if cached.content_hash:
+                self._hash_cache[cached.content_hash] = file_path
+        else:
+            # Extract metadata fresh
+            metadata = extract_metadata(file_path)
+
+            # Try to enrich missing metadata
+            if not metadata.is_complete and self.config.missing_metadata_action == "lookup":
+                if self.config.musicbrainz_enabled:
+                    metadata = enrich_metadata(metadata, self.config.acoustid_api_key)
+
+            # Compute hash for duplicate detection (will cache it)
+            content_hash = None
+            if self.config.detect_duplicates:
+                content_hash = compute_audio_hash(file_path)
+
+            # Cache the result
+            if self._scan_cache:
+                self._scan_cache.set(
+                    file_path=file_path,
+                    artist=metadata.artist,
+                    album_artist=metadata.album_artist,
+                    album=metadata.album,
+                    title=metadata.title,
+                    track_number=metadata.track_number,
+                    year=metadata.year,
+                    is_complete=metadata.is_complete,
+                    content_hash=content_hash,
+                )
 
         # Check for duplicates
         if self.config.detect_duplicates:
-            file_hash = compute_audio_hash(file_path)
+            # Use cached hash or compute fresh
+            if cached and cached.content_hash:
+                file_hash = cached.content_hash
+            else:
+                file_hash = compute_audio_hash(file_path)
+
             if file_hash in self._hash_cache:
                 original = self._hash_cache[file_hash]
-                plan.duplicates.append((original, file_path))
-                return FileOperation(
-                    source=file_path,
-                    destination=self._get_duplicate_path(file_path),
-                    operation="duplicate",
-                    reason=f"Duplicate of {original}",
-                    metadata=metadata,
-                )
+                # Don't mark as duplicate if it's the same file
+                if original != file_path:
+                    plan.duplicates.append((original, file_path))
+                    return FileOperation(
+                        source=file_path,
+                        destination=self._get_duplicate_path(file_path),
+                        operation="duplicate",
+                        reason=f"Duplicate of {original}",
+                        metadata=metadata,
+                    )
             self._hash_cache[file_hash] = file_path
 
         # Handle files with missing metadata

@@ -7,7 +7,6 @@ from music_organizer.metadata import (
     TrackMetadata,
     _parse_track_number,
     _parse_year,
-    sanitize_filename,
 )
 from music_organizer.organizer import sanitize_filename, format_path
 

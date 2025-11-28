@@ -10,7 +10,7 @@ Music library organizer that extracts metadata from audio files and reorganizes 
 
 ```bash
 # Install dependencies
-cd /Volumes/Media/Music/.music-organizer
+cd ~/music-organizer
 pip install -e .
 
 # Or install with dev dependencies
@@ -44,7 +44,12 @@ src/music_organizer/
 ├── config.py           # Configuration dataclass
 ├── metadata.py         # Audio metadata extraction (mutagen)
 ├── musicbrainz_lookup.py # MusicBrainz API for missing metadata
+├── discogs_lookup.py   # Discogs API for compilation verification
+├── normalization.py    # Artist name normalization and compilation detection
 ├── album_art.py        # Cover art download/extraction
+├── cache.py            # Scan result caching for faster subsequent runs
+├── visualizer.py       # Retro 80s stereo visualizer
+├── interactive.py      # Interactive menu mode
 └── organizer.py        # Core organization logic
 ```
 
