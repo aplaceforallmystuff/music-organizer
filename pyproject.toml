@@ -8,8 +8,8 @@ dependencies = [
     "musicbrainzngs>=0.7",  # MusicBrainz API for missing metadata lookup
     "python3-discogs-client>=2.7",  # Discogs API for release verification
     "pyacoustid>=1.2.0",    # Audio fingerprinting for duplicate detection
-    "Pillow>=10.0.0",       # Album art processing
-    "requests>=2.31.0",     # HTTP requests for album art downloads
+    "Pillow>=12.2.0",       # Album art processing
+    "requests>=2.33.0",     # HTTP requests for album art downloads
     "rich>=13.0.0",         # Beautiful terminal output and progress bars
     "click>=8.1.0",         # CLI framework
 ]
